@@ -99,10 +99,31 @@ Public Function GenerateCSVFields(frm As Form)
     
     Dim CSVImporterID: CSVImporterID = frm("CSVImporterID"): If isFalse(CSVImporterID) Then Exit Function
     Dim CSVFilePath: CSVFilePath = frm("CSVFilePath"): If ExitIfTrue(isFalse(CSVFilePath), "CSV filePath is empty..") Then Exit Function
+    Dim ExportFullCSVDirectory: ExportFullCSVDirectory = frm("ExportFullCSVDirectory")
+    Dim CSVFileName: CSVFileName = frm("CSVFileName")
     
+    If Not fileExists(CSVFilePath) Then
+        Dim CSVDirectory: CSVDirectory = ExportFullCSVDirectory & CSVFileName & "\"
+        Dim csvFiles As New clsArray
+        ''Fallback to the folder that has an index number appended.
+        If Not DirectoryExists(CSVDirectory) Then
+            CSVDirectory = ExportFullCSVDirectory & CSVFileName & "_0\"
+            If Not DirectoryExists(CSVDirectory) Then
+                ShowError "No valid directory."
+                Exit Function
+            End If
+        End If
+        
+        Set csvFiles = GetFilePaths(CSVDirectory, "csv")
+        
+        'Get a sample csv file to be used as the base for the table. to be imported as table
+        If csvFiles.count > 0 Then
+            CSVFilePath = csvFiles.arr(0)
+        End If
+    End If
+
     ImportCSVToTable CSVFilePath
     
-    ''RunSQL "DELETE FROM tblCSVImporterFields WHERE CSVImporterID = " & CSVImporterID
     Dim rs As Recordset: Set rs = ReturnRecordset("SELECT * FROM tblCSVData")
     Dim fld As field
     For Each fld In rs.fields
@@ -210,7 +231,7 @@ Public Function DeleteDataBasedOnCSV(frm As Object, Optional batchMode As Boolea
     
 End Function
 
-Private Function Create_tblCSVDataTemp(SourceConnector, DeletedFilePath)
+Private Function Create_tblCSVDataTemp(SourceConnector, Optional DeletedFilePath = "")
     
     Dim sqlObj As clsSQL, joinObj As clsJoin, sqlStr, rowsAffected, rs As Recordset
     Set sqlObj = New clsSQL
@@ -222,16 +243,18 @@ Private Function Create_tblCSVDataTemp(SourceConnector, DeletedFilePath)
     
     ''tblCSVAccompanyingData is the deleted table (which may or may not exist)
     
-    Dim sqlStr2
-    If fileExists(DeletedFilePath) Then
-        Set sqlObj = New clsSQL
-        With sqlObj
-         .Source = "tblCSVAccompanyingData"
-         .fields = "tblCSVAccompanyingData.*, ParseISO8601ToDateTime(tblCSVAccompanyingData.created_at) as valid_created_at"
-         sqlStr2 = .sql
-        End With
+    If Not isFalse(DeletedFilePath) Then
+        Dim sqlStr2
+        If fileExists(DeletedFilePath) Then
+            Set sqlObj = New clsSQL
+            With sqlObj
+             .Source = "tblCSVAccompanyingData"
+             .fields = "tblCSVAccompanyingData.*, ParseISO8601ToDateTime(tblCSVAccompanyingData.created_at) as valid_created_at"
+             sqlStr2 = .sql
+            End With
+        End If
     End If
-    
+
     deleteTableIfExists "tblCSVDataTemp"
     
     Set sqlObj = New clsSQL
@@ -357,6 +380,116 @@ Public Function Import_tblCSVDataToTargetTable(frm As Object, Optional batchMode
     
 End Function
 
+Public Function Import_tblCSVDataToTargetTableFullCSV(frm As Object, Optional batchMode As Boolean = False)
+
+    DoCmd.RunCommand acCmdSaveRecord
+
+    Dim CSVImporterID: CSVImporterID = frm("CSVImporterID"): If isFalse(CSVImporterID) Then Exit Function
+    Dim DestinationDatabase: DestinationDatabase = frm("DestinationDatabase"): If ExitIfTrue(isFalse(DestinationDatabase), "Destination Database is empty..") Then Exit Function
+    Dim TargetTable: TargetTable = frm("TargetTable"): If ExitIfTrue(isFalse(TargetTable), "Target Table is empty..") Then Exit Function
+    Dim SourceConnector: SourceConnector = frm("SourceConnector"): If ExitIfTrue(isFalse(SourceConnector), "Source Connector is empty..") Then Exit Function
+    Dim TargetConnector: TargetConnector = frm("TargetConnector"): If ExitIfTrue(isFalse(TargetConnector), "Target Connector is empty..") Then Exit Function
+    Dim CSVFilePath: CSVFilePath = frm("CSVFilePath"): If ExitIfTrue(isFalse(CSVFilePath), "CSV File Path is empty..") Then Exit Function
+    Dim CSVFileName: CSVFileName = frm("CSVFileName"): If ExitIfTrue(isFalse(CSVFileName), "CSVFileName is empty..") Then Exit Function
+    Dim ExportFullCSVDirectory: ExportFullCSVDirectory = frm("ExportFullCSVDirectory"): If ExitIfTrue(isFalse(ExportFullCSVDirectory), """ExportFullCSVDirectory"" is empty..") Then Exit Function
+    
+    Dim CSVDirectory: CSVDirectory = ExportFullCSVDirectory & CSVFileName & "\"
+    
+    ''Collect the directories for this CSVImporterID
+    Dim CSVDirectories As New clsArray
+    If Not DirectoryExists(CSVDirectory) Then
+        Dim i: i = 0
+        Dim CurrentDirectory: CurrentDirectory = ExportFullCSVDirectory & CSVFileName & "_" & i & "\"
+        Do While DirectoryExists(CurrentDirectory)
+            CSVDirectories.Add CurrentDirectory
+            i = i + 1
+            CurrentDirectory = ExportFullCSVDirectory & CSVFileName & "_" & i & "\"
+        Loop
+    Else
+        CSVDirectories.Add CSVDirectory
+    End If
+    
+    If CSVDirectories.count = 0 Then
+        ShowError "There's no valid directory."
+        Exit Function
+    End If
+    
+    ''Collect the csvFiles to be used.
+    Dim allCSVFiles As New clsArray: allCSVFiles.arr = ""
+    
+    Dim csvFiles As New clsArray
+    Dim item
+    i = 0
+    For Each item In CSVDirectories.arr
+        Set csvFiles = GetFilePaths(item, "csv")
+        Dim File
+        Dim j: j = 0
+        For Each File In csvFiles.arr
+            allCSVFiles.Add File
+            j = j + 1
+        Next File
+        i = i + 1
+    Next item
+    
+    If allCSVFiles.count = 0 Then
+        ShowError "There's no valid CSV File."
+        Exit Function
+    End If
+    
+    i = 0
+    
+    Dim TotalCount: TotalCount = 0
+    
+    For Each item In allCSVFiles.arr
+        CSVFilePath = item
+        ImportCSVToTable CSVFilePath
+        
+        TotalCount = TotalCount + ECount("tblCSVData")
+        Create_tblCSVDataTemp SourceConnector
+        
+        CreateCSVDataToDestinationDatabase DestinationDatabase, SourceConnector
+        
+        Dim sqlObj As clsSQL, joinObj As clsJoin, sqlStr, rowsAffected, rs As Recordset
+        Set sqlObj = New clsSQL
+        With sqlObj
+              .Source = "tblCSVData"
+              .fields = GenerateSelectFields(CSVImporterID)
+              sqlStr = .sql
+        End With
+        
+        GenerateSQLJoins sqlStr, CSVImporterID
+
+        Set sqlObj = New clsSQL
+        With sqlObj
+              .Source = sqlStr
+              .fields = "temp.*"
+              .AddFilter "[" & TargetTable & "]!" & TargetConnector & " IS NULL"
+              .joins.Add GenerateJoinObj("[" & TargetTable & "]", TargetConnector, , , "LEFT")
+              .SourceAlias = "temp"
+              sqlStr = .sql
+        End With
+        
+        Dim insertSQL
+        Set sqlObj = New clsSQL
+        With sqlObj
+              .SQLType = "INSERT"
+              .Source = "[" & TargetTable & "]"
+              .fields = GenerateInsertFields(CSVImporterID)
+              .insertSQL = sqlStr
+              .InsertFilterField = GenerateInsertFields(CSVImporterID)
+              insertSQL = .sql
+        End With
+        
+        RunSQLOnBackend DestinationDatabase, insertSQL
+        
+        i = i + 1
+    Next item
+    
+    Dim TargetTableCount: TargetTableCount = ECount(TargetTable)
+    If Not batchMode Then MsgBox TargetTable & " successfully updated. Parsed Record: " & TotalCount & ", Target Table: " & TargetTableCount
+    
+End Function
+
 Private Function GenerateSQLJoins(ByRef sqlStr, CSVImporterID)
     
     Dim additionalFields As New clsArray
@@ -437,7 +570,8 @@ Private Function GenerateSelectFields(CSVImporterID) As String
     
     Dim fields As New clsArray
     Dim rs As Recordset: Set rs = ReturnRecordset("Select * FROM qryCSVImporterFields where CSVImporterID = " & CSVImporterID & " AND NOT TargetField IS NULL")
-    Dim FieldType
+    Dim FieldType, SourceFieldType
+    
     Do Until rs.EOF
     
         Dim CSVField: CSVField = rs.fields("CSVField"): If ExitIfTrue(isFalse(CSVField), "CSVField is empty..") Then Exit Function
@@ -448,6 +582,8 @@ Private Function GenerateSelectFields(CSVImporterID) As String
         Dim LookupField: LookupField = rs.fields("LookupField")
         
         CSVField = "[" & CSVField & "]"
+         
+        SourceFieldType = GetFieldType("tblCSVData", CSVField)
         FieldType = GetFieldType(TargetTable, TargetField)
         
         Select Case FieldType
@@ -455,7 +591,11 @@ Private Function GenerateSelectFields(CSVImporterID) As String
                 CSVField = "DateValue(tblCSVData!" & CSVField & ")"
         End Select
         
-        If TargetField = "RecordImportID" Then
+'        If TargetField = "RecordImportID" And FieldType = "dbLong" Then
+'            CSVField = "CStr(tblCSVData!" & CSVField & ")"
+'        End If
+
+        If FieldType = "dbText" And SourceFieldType <> "dbText" Then
             CSVField = "CStr(tblCSVData!" & CSVField & ")"
         End If
         

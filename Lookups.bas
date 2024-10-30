@@ -197,10 +197,15 @@ Public Function Emin(tblName As String, filterStr, fieldName As String) As Doubl
     
 End Function
 
-Public Function ECount(tblName, filterStr As String) As Double
+Public Function ECount(tblName, Optional filterStr As String = "") As Double
     
     Dim rs As Recordset
-    Set rs = CurrentDb.OpenRecordset("SELECT COUNT(*) As CountOfRecord FROM " & tblName & " WHERE " & filterStr)
+    
+    Dim sqlStr: sqlStr = "SELECT COUNT(*) As CountOfRecord FROM " & tblName
+    If Not isFalse(filterStr) Then
+        sqlStr = sqlStr & " WHERE " & filterStr
+    End If
+    Set rs = CurrentDb.OpenRecordset(sqlStr)
     
     If rs.EOF Then
         ECount = 0

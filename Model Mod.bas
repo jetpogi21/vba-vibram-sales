@@ -8,6 +8,37 @@ Public Function CreateFormSet(frm2 As Form)
     CreateDSForm frm2
     CreateMainForm frm2
     CreateSimpleDEForm frm2
+    AddMainFormTo_tblMainMenus frm2
+    
+    Dim ModelID: ModelID = frm2("ModelID")
+    Dim FormSuffix: FormSuffix = GetFormSuffix(ModelID)
+    DoCmd.Close acForm, "dsht" & FormSuffix, acSaveNo
+    
+End Function
+
+Public Function AddMainFormTo_tblMainMenus(frm As Form)
+    
+    Dim ModelID: ModelID = frm("ModelID")
+    Dim Model: Model = frm("Model")
+    Dim VerbosePluralName: VerbosePluralName = GetVerbosePluralName(Model)
+    Dim FormSuffix: FormSuffix = GetFormSuffix(ModelID)
+    
+    Dim MenuOrder: MenuOrder = ELookup("tblMainMenus", "MainMenuID > 0", "MenuOrder", "MenuOrder DESC")
+    
+    If isFalse(MenuOrder) Then
+        MenuOrder = 1
+    Else
+        MenuOrder = CDbl(MenuOrder) + 1
+    End If
+    
+    Dim fields As New clsArray: fields.arr = "MenuCaption,FormName,MenuOrder"
+    Dim fieldValues As New clsArray
+    Set fieldValues = New clsArray
+    fieldValues.Add VerbosePluralName
+    fieldValues.Add "main" & FormSuffix
+    fieldValues.Add MenuOrder
+    
+    UpsertRecord "tblMainMenus", fields, fieldValues, "MenuCaption = " & Esc(VerbosePluralName)
 
 End Function
 
@@ -1780,7 +1811,7 @@ Public Function CreateTableDef(frm As Object, Optional notifySuccess As Boolean 
     
     ''Create the RecordImportID
     fldName = "RecordImportID"
-    Set fld = AddField(tblDef, fldName, dbLong)
+    Set fld = AddField(tblDef, fldName, dbText)
     AddIndex tblDef, fldName, fldName
     
     If Not DoesPropertyExists(db.TableDefs, tblName) Then
@@ -2370,7 +2401,8 @@ Private Function GetTableOrQueryDef(rsName, db As Database) As Object
     End If
 End Function
 
-Public Function CreateDEForm(frm2 As Form, Optional CreateAsReport As Boolean = False)
+''SimpleOnly flag is useful when creating a simple data entry form without any children to be used by NotInList event of comboboxes.
+Public Function CreateDEForm(frm2 As Form, Optional CreateAsReport As Boolean = False, Optional SimpleOnly As Boolean = False)
     
     Dim rs As Recordset, fldName
     Dim maxWidth As Double
@@ -2410,6 +2442,7 @@ Public Function CreateDEForm(frm2 As Form, Optional CreateAsReport As Boolean = 
         SetCommonReportProperties frm
     Else
         Set frm = CreateForm
+        If SimpleOnly Then frm.DataEntry = True
     End If
     
     Dim rsName: rsName = GetTableName(Model, VerbosePlural)
@@ -2437,6 +2470,7 @@ Public Function CreateDEForm(frm2 As Form, Optional CreateAsReport As Boolean = 
     Dim frmName As String, customFrmName As String, baseFormName As String, i As Integer
     
     frmName = frm.Name
+    
     If Not IsNull(VerbosePlural) Then
         baseFormName = concat("frm", replace(VerbosePlural, " ", ""))
     Else
@@ -2524,7 +2558,13 @@ Public Function CreateDEForm(frm2 As Form, Optional CreateAsReport As Boolean = 
         Set fld = rsObj.fields(fldName)
         
         ''This skips the primary key
-        If Not IsKeyVisible And fld.Name = PrimaryKey Then GoTo NextField
+        If Not IsKeyVisible And fld.Name = PrimaryKey Then
+            Select Case fld.Type
+                Case dbText, dbDate:
+                Case Else:
+                    GoTo NextField
+            End Select
+        End If
   
         Select Case fld.Name
             Case "Timestamp", "CreatedBy":
@@ -2668,6 +2708,11 @@ NextField:
     fldWidth = GetMaxX(frm) - 400
     Dim minimumWidth: minimumWidth = (FormColumns * 3000)
     If minimumWidth > fldWidth Then fldWidth = minimumWidth
+    
+    
+    If SimpleOnly Then
+        GoTo EndOfSubformRendering:
+    End If
     
     Dim childModels
     Set rs = ReturnRecordset("SELECT * " & _
@@ -2846,7 +2891,7 @@ NextField:
     If childModels > 0 Then
         y = y + 7000
     End If
-    
+
     ''Any subform totals will be placed after the subform
     Set rs = ReturnRecordset("SELECT * FROM tblSubformControls WHERE IsVisible = -1 And ModelID = " & ModelID & " ORDER BY FieldOrder ASC")
     
@@ -2906,7 +2951,8 @@ NextField:
             rs.MoveNext
         Loop
     End If
-    
+
+EndOfSubformRendering:
     ''Buttons
     maxY = 0
     For Each ctl In frm.controls
@@ -3004,6 +3050,10 @@ NextField:
     OverrideProperties ModelID, 4, frm
     
     DoCmd.Close IIf(CreateAsReport, acReport, acForm), frm.Name, acSaveYes
+    
+    If SimpleOnly Then
+        baseFormName = RegExReplace(baseFormName, "^frm", "frmSimple")
+    End If
     
     customFrmName = baseFormName
     
@@ -3230,647 +3280,7 @@ End Function
 
 Public Function CreateSimpleDEForm(frm2 As Form)
     
-    Dim frm As Form, rs As Recordset, rsName, fldName, fldWidth
-    Dim CurrentCol, x, y, isMemo As Boolean, maxWidth As Double
-    Dim ctl As control
-    
-    Dim ModelID, Model, VerboseName, VerbosePlural, MainField, TableWideValidation, FormColumns, SetFocus, IsKeyVisible
-    Dim QueryName, OnFormCreate, SubformName2, UserQueryFields, Timestamp, CreatedBy, PrimaryKey
-    
-    ModelID = frm2("ModelID")
-    Model = frm2("Model")
-    VerboseName = frm2("VerboseName")
-    VerbosePlural = frm2("VerbosePlural")
-    MainField = frm2("MainField")
-    TableWideValidation = frm2("TableWideValidation")
-    FormColumns = frm2("FormColumns")
-    SetFocus = frm2("SetFocus")
-    IsKeyVisible = frm2("IsKeyVisible")
-    QueryName = frm2("QueryName")
-    OnFormCreate = frm2("OnFormCreate")
-    SubformName2 = frm2("SubformName")
-    UserQueryFields = frm2("UserQueryFields")
-    Timestamp = frm2("Timestamp")
-    CreatedBy = frm2("CreatedBy")
-    PrimaryKey = frm2("PrimaryKey")
-    
-    If ExitIfTrue(IsNull(ModelID), "Selection is empty..") Then Exit Function
-    
-    GenerateFields frm2
-    
-    '''Create the controls
-    '''Fields, default buttons, additional buttons and controls
-    
-    ''Create the form
-    Set frm = CreateForm
-    frm.DataEntry = True
-    rsName = GetTableName(Model, VerbosePlural)
-    
-    Dim tblName
-    tblName = rsName
-    
-    If Not IsNull(QueryName) Then
-        rsName = QueryName
-    End If
-    
-    frm.Detail.BackColor = RGB(31, 73, 125)
-    frm.recordSource = rsName
-    Dim VerboseCaption: VerboseCaption = ELookup("tblSupplementalModels", "ModelID = " & ModelID, "VerboseCaption")
-    Dim frmCaption: frmCaption = GetFieldCaption(VerboseName, Model, VerboseCaption)
-    frm.Caption = concat(frmCaption, " Form")
-    
-    frm.OnCurrent = "=SetFocusOnForm([Form],""" & SetFocus & """)"
-    
-    If IsNull(PrimaryKey) Then PrimaryKey = concat(Model, "ID")
-    frm.BeforeUpdate = "=SaveFormData2([Form],""" & Model & """)"
-    frm.OnLoad = "=DefaultFormLoad([Form]," & EscapeString(PrimaryKey) & ")"
-    
-    SetFormProperties 4, frm
-    CurrentCol = 1
-    
-    Dim rsObj As Object, db As DAO.Database, fld As DAO.field
-    Set db = CurrentDb
-    If DoesPropertyExists(db.TableDefs, rsName) Then
-        Set rsObj = db.TableDefs(rsName)
-    Else
-        Set rsObj = db.QueryDefs(rsName)
-    End If
-    
-    x = 400
-    y = 600
-    
-    CurrentCol = 0: isMemo = False
-    
-    Dim sqlStr As String
-    sqlStr = "SELECT * FROM tblModelFields WHERE FieldOrder IS NOT NULL AND ModelID = " & ModelID
-    
-    If Not UserQueryFields Then
-        sqlStr = sqlStr & " AND FieldSource = " & EscapeString(rsName)
-    End If
-    
-    Set rs = ReturnRecordset(sqlStr & " ORDER BY FieldOrder ASC")
-    
-    Do Until rs.EOF
-    
-        ''Skip the field if there is an imageType proprety on qryModelFieldProperties
-        If isPresent("qryModelFieldProperties", "Property = " & EscapeString("imageType") & " And ModelFieldID = " & rs.fields("ModelFieldID")) Then
-            GoTo NextField
-        End If
-    
-        ''Look First if the ControlSource is not Null
-        If Not IsNull(rs.fields("ControlSource")) Then
-           If isPresent("qryModelFieldProperties", "Property = ""onDatasheetOnly"" And ModelFieldID = " & rs.fields("ModelFieldID")) Then
-               
-                GoTo NextField
-            Else
-                ''Create a control at the footer of the form
-                fldWidth = 3000 * (rs.fields("Columns")) + (200 * (rs.fields("Columns") - 1))
-                Set ctl = CreateControl(frm.Name, acTextBox, , "", "", x, y, fldWidth)
-                SetControlPropertiesFromTemplate ctl, frm
-                ctl.Name = rs.fields("ModelField")
-                ctl.ControlSource = rs.fields("ControlSource")
-                
-                Select Case rs.fields("FieldTypeID")
-                    Case dbMemo:
-                        ctl.Height = 900
-                        isMemo = True
-                    Case dbDouble
-                        ctl.Format = "Standard"
-                End Select
-            
-                ''Generate the label just above the control
-                Dim CustomVerboseName
-                If IsNull(rs.fields("VerboseName")) Then
-                    CustomVerboseName = AddSpaces(rs.fields("ModelField"))
-                Else
-                    CustomVerboseName = rs.fields("VerboseName")
-                End If
-                Set ctl = CreateControl(frm.Name, acLabel, , rs.fields("ModelField"), CustomVerboseName, x, y - 300)
-                SetControlPropertiesFromTemplate ctl, frm
-                ctl.Width = fldWidth
-                
-                GoTo SetVariables
-            End If
-            
-        End If
-    
-        fldName = GetFieldName(rs.fields("ForeignKey"), rs.fields("ModelField"), True)
-        fldWidth = 3000
-        
-        If Not DoesPropertyExists(rsObj.fields, fldName) Then
-            GoTo NextField
-        End If
-        
-        Set fld = rsObj.fields(fldName)
-        
-        If Not IsKeyVisible And fld.Name = PrimaryKey Then
-            GoTo NextField
-        End If
-        
-        Select Case fld.Name
-            Case "Timestamp", "CreatedBy":
-                GoTo NextField
-        End Select
-        
-        Dim ControlTypeValue
-        If Not DoesPropertyExists(fld.Properties, "DisplayControl") Then
-            ControlTypeValue = acTextBox
-        Else
-            ControlTypeValue = fld.Properties("DisplayControl")
-        End If
-        
-        ''Generate the control first before the label
-        ''Get the width depending on the Number of columns but make sure that the CurrentCol + the columns will not exceed
-        ''the FormColumn
-        fldWidth = 3000 * (rs.fields("Columns")) + (200 * (rs.fields("Columns") - 1))
-        
-        ''Setting the FieldOrder to 0 here will make the fld hidden..
-        If rs.fields("FieldOrder") = 0 Then
-            Set ctl = CreateControl(frm.Name, ControlTypeValue, , "", fld.Name, 0, 0, 0)
-            ctl.Name = fld.Name
-            SetControlPropertiesFromTemplate ctl, frm
-            GoTo NextField
-        End If
-        
-        ''Check if the current field has fileType property. This will tell us that we need to use an upload form rather than a memo field
-        ''Skip the field if there is an imageType proprety on qryModelFieldProperties
-        If isPresent("qryModelFieldProperties", "Property = " & EscapeString("fileType") & " And ModelFieldID = " & rs.fields("ModelFieldID")) Then
-            CreateDEFileUploadControl frm, fld.Name, x, y, fldWidth
-            GoTo SetVariables
-        End If
-        
-        Set ctl = CreateControl(frm.Name, ControlTypeValue, , "", fld.Name, x, y, fldWidth)
-        ctl.Name = fld.Name
-        
-        ''Set control property based on ControlTypeValue
-        SetControlPropertiesFromTemplate ctl, frm
-        
-        Select Case fld.Type
-            Case dbMemo:
-                ctl.Height = 900
-                isMemo = True
-            Case dbDouble:
-                ctl.Format = "Standard"
-        End Select
-        
-        ''Generate the label just above the control
-        Dim ControlCaption
-        If Not DoesPropertyExists(fld.Properties, "Caption") Then
-            If IsNull(rs.fields("VerboseName")) Then
-                ControlCaption = AddSpaces(rs.fields("ModelField"))
-            Else
-                ControlCaption = rs.fields("VerboseName")
-            End If
-        Else
-            ControlCaption = fld.Properties("Caption")
-        End If
-        
-        Set ctl = CreateControl(frm.Name, acLabel, , fld.Name, ControlCaption, x, y - 300)
-        SetControlPropertiesFromTemplate ctl, frm
-        ctl.Name = concat("lbl", fld.Name)
-        ctl.Width = fldWidth
-
-SetVariables:
-    
-        CurrentCol = CurrentCol + rs.fields("Columns")
-        
-        If CurrentCol = FormColumns Then
-            
-            If x + 3000 + 400 > maxWidth Then
-                maxWidth = x + 3000 + 400
-            End If
-            
-            CurrentCol = 0
-            x = 400
-            If Not isMemo Then
-                y = y + 700
-            Else
-                isMemo = False
-                y = y + 700 + 600
-            End If
-
-
-        Else
-        
-            x = x + (3200 * rs.fields("Columns"))
-            
-            
-        End If
-NextField:
-        
-        rs.MoveNext
-    Loop
-    
-    ''Create the Timestamp and CreatedBy field (Hidden Fields)
-    Set ctl = CreateControl(frm.Name, acTextBox, , "", "Timestamp", 0, 0, 0)
-    ctl.Name = "Timestamp"
-    SetControlPropertiesFromTemplate ctl, frm
-    
-    Set ctl = CreateControl(frm.Name, acComboBox, , "", "CreatedBy", 0, 0, 0)
-    ctl.Name = "CreatedBy"
-    SetControlPropertiesFromTemplate ctl, frm
-    
-    frm("Timestamp").Visible = False
-    frm("CreatedBy").Visible = False
-    
-    ''Create Upload Form if there's any (Simple PictureBox) + Button at the bottom
-    CreateDEUploadForm frm, ModelID
-    
-    ''Create the child forms here
-    ''Child sub + Plural name of the Child Model
-    x = 400
-    y = y + 600
-    
-    
-    fldWidth = GetMaxX(frm) - 400
-    Dim minimumWidth: minimumWidth = (FormColumns * 3000)
-    If minimumWidth > fldWidth Then fldWidth = minimumWidth
-    
-    ''This will make the child to be zero
-    Dim childModels
-    Set rs = ReturnRecordset("SELECT * " & _
-        "FROM qryModelFields WHERE ParentModelID = " & ModelID & " And HideSubformFromParent = 0 AND ModelFieldID = 0 " & _
-        "ORDER BY SubPageorder ASC")
-        
-    If rs.EOF Then
-        childModels = 0
-    Else
-        rs.MoveLast
-        rs.MoveFirst
-        childModels = rs.recordCount
-    End If
-    
-    Dim pg As Page, tbCtl As TabControl, pgCaption, x1, y1, SubformName, SubModel, maxY, pgName, subTblName, ModelFieldID, maxX As Long
-    
-    Do Until rs.EOF
-        
-        If Not DoesPropertyExists(frm, "tabCtl") Then
-        
-            For Each ctl In frm.controls
-                If ctl.Top + ctl.Height > maxY Then
-                    maxY = ctl.Top + ctl.Height
-                End If
-            Next ctl
-            
-            Set ctl = CreateControl(frm.Name, acTabCtl, , , , x, maxY + 400, fldWidth, 7000)
-            ctl.Name = "tabCtl"
-            SetControlPropertiesFromTemplate ctl, frm
-            
-            'frm.Width = (FormColumns * 3000) + (FormColumns * 400) - 200
-        End If
-        
-        Set tbCtl = frm.tabCtl
-        
-        Do Until tbCtl.Pages.count > childModels
-            tbCtl.Pages.Add
-        Loop
-        
-        For Each pg In tbCtl.Pages
-                
-            If pg.PageIndex > childModels - 1 Then
-            
-                tbCtl.Pages.Remove pg.PageIndex
-                
-            Else
-
-                If Not IsNull(rs.fields("VerbosePlural")) Then
-                    pgCaption = AddSpaces(rs.fields("VerbosePlural"))
-                    SubModel = concat(replace(rs.fields("VerbosePlural"), " ", ""))
-                    pgName = concat("pg", SubModel)
-                    subTblName = concat("tbl", SubModel)
-                Else
-                    pgCaption = AddSpaces(concat(rs.fields("Model"), "s"))
-                    SubModel = concat(rs.fields("Model"), "s")
-                    pgName = concat("pg", SubModel)
-                    subTblName = concat("tbl", SubModel)
-                End If
-                
-                If Not IsNull(rs.fields("VerboseChildName")) Then
-                    pgCaption = rs.fields("VerboseChildName")
-                    SubModel = RemoveSpaces(pgCaption)
-                    pgName = concat("pg", SubModel)
-                End If
-                
-                pg.Caption = pgCaption
-                pg.Name = pgName
-                
-                ''Add the Buttons
-                maxY = frm.controls("tabCtl").Top - 400
-                x1 = 600
-                y1 = maxY + 400 + 500
-                
-                ModelFieldID = rs.fields("ModelFieldID")
-                
-                Dim frmToOpen
-                frmToOpen = GetModelPlural(rs.fields("Model"), rs.fields("VerbosePlural"), "frm")
-                
-                ''New Button
-                If Not isPresent("qryModelFieldProperties", "Property = ""pgNewHidden"" And ModelFieldID = " & ModelFieldID) Then
-                    RenderButton x1, y1, "New", frm, concat("Add", SubModel), pg.Name
-                    frm(concat("cmdAdd", SubModel)).OnClick = "=OpenFormFromMain(" & EscapeString(frmToOpen) & ","""","""",[Form]," & EscapeString(PrimaryKey) & ")"
-                    x1 = x1 + (3200 * 0.46)
-                End If
-                
-                ''Edit/View Button
-                If Not isPresent("qryModelFieldProperties", "Property = ""pgEditHidden"" And ModelFieldID = " & ModelFieldID) Then
-                    RenderButton x1, y1, "Edit/View", frm, concat("Edit", SubModel), pg.Name
-                    frm(concat("cmdEdit", SubModel)).OnClick = "=OpenFormFromMain(" & EscapeString(frmToOpen) & ", " & EscapeString(concat("sub", SubModel)) & ", " & _
-                            EscapeString(concat(rs.fields("Model"), "ID")) & ",[Form])"
-                    x1 = x1 + (3200 * 0.46)
-                End If
-                
-                ''Delete Button
-                If Not isPresent("qryModelFieldProperties", "Property = ""pgDeleteHidden"" And ModelFieldID = " & ModelFieldID) Then
-                    RenderButton x1, y1, "Delete", frm, concat("Delete", SubModel), pg.Name
-                    frm(concat("cmdDelete", SubModel)).OnClick = "=DeleteRecord([Form], " & EscapeString(concat(rs.fields("Model"), "ID")) & ", " & _
-                            EscapeString(subTblName) & "," & EscapeString(concat("sub", SubModel)) & ")"
-                    x1 = x1 + (3200 * 0.46)
-                End If
-                
-                ''Get the x + length of the leftmost button
-                maxY = frm.controls("tabCtl").Top - 400
-                For Each ctl In frm.controls
-                    If ctl.ControlType = acCommandButton Then
-                        If ctl.Top + ctl.Height > maxY Then
-                            maxY = ctl.Top + ctl.Height
-                        End If
-                    End If
-                Next ctl
-                
-                If x1 > 600 Then
-                    y1 = y1 + 400 + 100
-                End If
-                
-                x1 = 600
-                
-                Dim pgCtlHeight, pgCtlTop
-                pgCtlHeight = frm.controls("tabCtl").Height
-                pgCtlTop = frm.controls("tabCtl").Top
-                pgCtlHeight = pgCtlTop + pgCtlHeight - y1 - 200
-                
-                Set ctl = CreateControl(frm.Name, acSubform, , concat("pg", SubModel), , x1, y1, fldWidth - 400, pgCtlHeight)
-                ctl.Name = concat("sub", SubModel)
-                ctl.Properties("RightPadding") = 100
-                
-                If Not IsNull(rs.fields("SubformSource")) Then
-                    ctl.SourceObject = rs.fields("SubformSource")
-                Else
-                    ctl.SourceObject = "dsht" & SubModel
-                End If
-                
-                ctl.HorizontalAnchor = acHorizontalAnchorBoth
-                ctl.VerticalAnchor = acVerticalAnchorBoth
-                
-                ''Join the subform using the PrimaryKey
-                ctl.LinkMasterFields = PrimaryKey
-                ctl.LinkChildFields = rs.fields("ModelField")
-                
-                            
-            End If
-            
-            If Not rs.EOF Then
-            
-                rs.MoveNext
-            
-            End If
-            
-        Next pg
-        
-        
-    Loop
-    
-    If childModels > 0 Then
-        y = y + 7000
-    End If
-    
-    ''Any subform totals will be placed after the subform
-    Set rs = ReturnRecordset("SELECT * FROM tblSubformControls WHERE IsVisible = -1 And ModelID = " & ModelID & " ORDER BY FieldOrder ASC")
-    
-    If Not rs.EOF Then
-        maxY = 0
-        CurrentCol = 0
-        For Each ctl In frm.controls
-            If (ctl.Top + ctl.Height) > maxY Then
-                maxY = ctl.Top + ctl.Height
-            End If
-        Next ctl
-        
-        x = 400
-        y = maxY + 800
-        
-        Dim ctlName
-        
-        Do Until rs.EOF
-            
-            ctlName = concat(rs.fields("SubformName"), rs.fields("ControlName"))
-            
-            fldWidth = 3000 * (0.5) + (200 * (0.5 - 1))
-            Set ctl = CreateControl(frm.Name, acTextBox, , "", "", x, y, fldWidth)
-            ctl.Name = ctlName
-            ctl.ControlSource = concat("=IfError(", rs.fields("SubformName"), "!SUM", rs.fields("ControlName"), ")")
-            ctl.Format = "Standard"
-            ctl.HorizontalAnchor = acHorizontalAnchorLeft
-            ctl.VerticalAnchor = acVerticalAnchorBottom
-            
-            ''Set control property based on ControlTypeValue
-            SetControlPropertiesFromTemplate ctl, frm
-            
-            ''Generate the label just above the control
-            Set ctl = CreateControl(frm.Name, acLabel, , ctl.Name, rs.fields("ControlCaption"), x, y - 500)
-            
-            SetControlPropertiesFromTemplate ctl, frm
-            
-            ctl.Height = 400
-            ctl.Width = fldWidth
-            ctl.HorizontalAnchor = acHorizontalAnchorLeft
-            ctl.VerticalAnchor = acVerticalAnchorBottom
-            CurrentCol = CurrentCol + 0.5
-        
-            If CurrentCol = FormColumns Then
-                
-                CurrentCol = 0
-                x = 400
-                y = y + 900
-            Else
-            
-                x = x + (3200 * 0.5)
-                
-            End If
-            
-            
-            rs.MoveNext
-        Loop
-    End If
-    
-    ''Buttons
-    maxY = 0
-    For Each ctl In frm.controls
-        If (ctl.Top + ctl.Height) > maxY Then
-            maxY = ctl.Top + ctl.Height
-        End If
-    Next ctl
-    
-    x = 400
-    y = maxY + 400
-    
-    Dim buttonMultiplier
-    buttonMultiplier = 0.46
-    CurrentCol = 0
-    ''Cancel Button
-    If Not isPresent("qryModelProperties", "Property = ""frmCancelHidden"" And ModelID = " & ModelID) Then
-        RenderButton x, y, "Cancel", frm, "Cancel"
-        frm.cmdCancel.OnClick = "=CancelEdit([Form])"
-        frm.cmdCancel.HorizontalAnchor = 0
-        frm.cmdCancel.VerticalAnchor = 1
-        x = x + (3200 * buttonMultiplier)
-        CurrentCol = CurrentCol + 0.5
-    End If
-    
-    ''New Button
-    If Not isPresent("qryModelProperties", "Property = ""frmNewHidden"" And ModelID = " & ModelID) Then
-        RenderButton x, y, "New", frm, "New"
-        frm.cmdNew.OnClick = "=Save2([Form],'" & Model & "',0)"
-        frm.cmdNew.HorizontalAnchor = 0
-        frm.cmdNew.VerticalAnchor = 1
-        x = x + (3200 * buttonMultiplier)
-        CurrentCol = CurrentCol + 0.5
-    End If
-    
-    ''Save Button
-    If Not isPresent("qryModelProperties", "Property = ""frmSaveHidden"" And ModelID = " & ModelID) Then
-        RenderButton x, y, "Save", frm, "SaveClose"
-        frm.cmdSaveClose.OnClick = "=Save2([Form],'" & Model & "',1)"
-        frm.cmdSaveClose.HorizontalAnchor = 0
-        frm.cmdSaveClose.VerticalAnchor = 1
-        x = x + (3200 * buttonMultiplier)
-        CurrentCol = CurrentCol + 0.5
-    End If
-    
-    ''Delete Button
-    If Not isPresent("qryModelProperties", "Property = ""frmDeleteHidden"" And ModelID = " & ModelID) Then
-        RenderButton x, y, "Delete", frm, "Delete"
-        frm.cmdDelete.OnClick = "=DeleteRecord([Form], '" & PrimaryKey & "', '" & rsName & "')"
-        frm.cmdDelete.HorizontalAnchor = 0
-        frm.cmdDelete.VerticalAnchor = 1
-        x = x + (3200 * buttonMultiplier)
-        CurrentCol = CurrentCol + 0.5
-    End If
-    
-    maxX = x
-    
-    RenderAdditionalButtonOnDEForm ModelID, frm, y, maxX, CurrentCol, buttonMultiplier, FormColumns
-    
-    ''Align the collapsed controls if there's any
-    If DoesPropertyExists(frm.controls, "cboFormActions") Then
-        maxX = GetMaxX(frm)
-        frm("cmdRunFormActions").Left = maxX - frm("cmdRunFormActions").Width
-        frm("cboFormActions").Left = frm("cmdRunFormActions").Left - 55 - frm("cboFormActions").Width
-        frm("lblFormActions").Left = frm("cboFormActions").Left - 55 - frm("lblFormActions").Width
-    End If
-    
-'    If Not rs.EOF Then
-'
-'        ''Get the x + length of the leftmost button
-''        For Each ctl In frm.controls
-''            If ctl.ControlType = acCommandButton Then
-''                If ctl.Left + ctl.Width > maxX And ctl.Top = y Then
-''                    maxX = ctl.Left + ctl.Width
-''                End If
-''            End If
-''        Next ctl
-'
-'        Do Until rs.EOF
-'            ModelButton = rs.Fields("ModelButton")
-'            modelButtonName = RemoveSpaces(ModelButton)
-'            cmdButtonName = Concat("cmd", modelButtonName)
-'            functionName = rs.Fields("FunctionName")
-'            TableWideFunction = rs.Fields("TableWideFunction")
-'
-'            RenderButton maxX, y, ModelButton, frm, modelButtonName
-'            If Not IsNull(functionName) Then
-'                If TableWideFunction Then
-'                    frm(cmdButtonName).OnClick = Concat("=", functionName, "()")
-'                Else
-'                    frm(cmdButtonName).OnClick = Concat("=", functionName, "([Form])")
-'                End If
-'            End If
-'
-'            CurrentCol = CurrentCol + 0.5
-'
-'            If CurrentCol = FormColumns Then
-'
-'                CurrentCol = 0
-'                maxX = 400
-'                y = y + 600
-'
-'            Else
-'
-'                maxX = maxX + (3200 * buttonMultiplier)
-'
-'            End If
-'
-'            rs.MoveNext
-'        Loop
-'
-'    End If
-    
-    frm.Section("Detail").Height = y + 800
-    
-    ''Set the Form Width
-    maxX = 0
-    For Each ctl In frm.controls
-        If ctl.Left + ctl.Width > maxX Then
-            maxX = ctl.Left + ctl.Width
-        End If
-    Next ctl
-    
-    frm.Width = maxX + 400
-    
-    ''Special Function to run on form creation
-    If Not IsNull(OnFormCreate) Then
-        Run OnFormCreate, frm, 4
-    End If
-    
-    ''Override Properties Here
-    OverrideProperties ModelID, 4, frm
-    
-    Dim frmName As String, customFrmName As String, baseFormName As String, i As Integer
-    
-    frmName = frm.Name
-    If Not IsNull(VerbosePlural) Then
-        baseFormName = concat("frmSimple", replace(VerbosePlural, " ", ""))
-    Else
-        baseFormName = concat("frmSimple", Model, "s")
-    End If
-    
-    If Not IsNull(SubformName2) Then
-        baseFormName = concat("frm", SubformName2)
-    End If
-    
-    DoCmd.Close acForm, frm.Name, acSaveYes
-    
-    customFrmName = baseFormName
-    
-'    Do Until Not FrmExist(customFrmName)
-'
-'        If MsgBox(customFrmName & " already exists. Would you like to replace it?", vbYesNo) = vbYes Then
-'            Exit Do
-'        End If
-'        i = i + 1
-'        customFrmName = baseFormName & "_" & i
-'
-'    Loop
-    
-    InsertToModelRelatedObjects ModelID, acForm, customFrmName
-    
-    DoCmd.Rename customFrmName, acForm, frmName
-    
-    ''Load Save Form Layout
-    LoadSavedFormLayout customFrmName
- 
-    DoCmd.OpenForm customFrmName
-    
-    InsertFormInFormForRights customFrmName, Model
+    CreateDEForm frm2, False, True
     
 End Function
 
@@ -4347,7 +3757,7 @@ Public Function CreateMainForm(frm2 As Form)
     Dim tblDef As DAO.TableDef, db As DAO.Database, fld As DAO.field
     Dim ctl As control, baseName
     
-    Dim ModelID, Model, VerboseName, VerbosePlural, MainField, TableWideValidation, FormColumns, SetFocus, IsKeyVisible
+    Dim ModelID, Model, VerboseName, VerbosePlural, MainField, TableWideValidation, FormColumns, SetFocus
     Dim QueryName, OnFormCreate, SubformName, Timestamp, CreatedBy, PrimaryKey
     
     ''Declare the variables -> Look at the tblSupplementalModels and see if this model has a UseAsModel Property
@@ -4362,7 +3772,6 @@ Public Function CreateMainForm(frm2 As Form)
     TableWideValidation = src("TableWideValidation")
     FormColumns = frm2("FormColumns")
     SetFocus = frm2("SetFocus")
-    IsKeyVisible = frm2("IsKeyVisible")
     QueryName = frm2("QueryName")
     OnFormCreate = frm2("OnFormCreate")
     SubformName = frm2("SubformName")
@@ -6240,8 +5649,8 @@ Public Function CreateDSForm(frm2 As Form, Optional DontOpen As Boolean = False)
     Dim CurrentCol, x, y, isMemo As Boolean, maxWidth
     Dim ctl As control
     
-    Dim ModelID, Model, VerboseName, VerbosePlural, MainField, TableWideValidation, FormColumns, SetFocus, IsKeyVisible
-    Dim QueryName, OnFormCreate, SubformName, UserQueryFields, Timestamp, CreatedBy, PrimaryKey
+    Dim ModelID, Model, VerboseName, VerbosePlural, MainField, TableWideValidation, FormColumns, SetFocus
+    Dim QueryName, OnFormCreate, SubformName, UserQueryFields, Timestamp, CreatedBy, PrimaryKey, IsKeyVisible
     
     ''Fetch Variables from the Form
     ModelID = frm2("ModelID")
@@ -6326,9 +5735,12 @@ Public Function CreateDSForm(frm2 As Form, Optional DontOpen As Boolean = False)
         fldWidth = 3000
         Set fld = rsObj.fields(fldName)
         
-        
         If (Not IsKeyVisible And fld.Name = PrimaryKey) Or Not IsNull(rs.fields("ControlSource")) Then
-            GoTo NextField
+            Select Case fld.Type
+                Case dbText, dbDate:
+                Case Else:
+                    GoTo NextField
+            End Select
         End If
         
         ''Skip the field if there is an imageType proprety on qryModelFieldProperties

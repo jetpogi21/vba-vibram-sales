@@ -63,7 +63,7 @@ Public Function GetMatchedPatterns(Text, pattern As String, Optional DebugMode A
 
     regex.pattern = pattern
     regex.Global = True
-    regex.IgnoreCase = True
+    regex.IgnoreCase = False
     
     Dim theMatches As Object, match As Object
     Set theMatches = regex.Execute(Text)
@@ -97,7 +97,7 @@ Public Function RemoveMatchedPattern(Text, pattern As String, Optional DebugMode
     
 End Function
 
-Public Function ReplaceMatchedPattern(Text, pattern As String, replacement As String, Optional DebugMode As Boolean = False) As String
+Public Function ReplaceMatchedPattern(Text, pattern, replacement, Optional DebugMode As Boolean = False) As String
     
     If pattern = ",\n\}" Then
         Debug.Print

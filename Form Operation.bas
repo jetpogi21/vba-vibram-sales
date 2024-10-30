@@ -146,14 +146,45 @@ Public Function SplitWordsByUppercase(Text) As String
     SplitWordsByUppercase = result
 End Function
 
-Public Function GetVerboseName(Name)
+Public Function GetVerbosePluralName(ByRef Name)
     
-    GetVerboseName = Name
-    If Name Like "*ID" Then
-        GetVerboseName = Left(GetVerboseName, Len(GetVerboseName) - 2)
+    Dim matches As New clsArray: Set matches = GetMatchedPatterns(Name, "[a-z0-9][A-Z0-9]")
+    
+    If matches.count > 0 Then
+        Dim item
+        Dim i As Integer: i = 0
+        For Each item In matches.arr
+            Dim replacement: replacement = Left(item, 1) & " " & Right(item, 1)
+            Name = ReplaceMatchedPattern(Name, item, replacement)
+            i = i + 1
+        Next item
     End If
     
-    GetVerboseName = SplitWordsByUppercase(GetVerboseName)
+    If RegExTest(Name, "y$") Then
+        Name = RegExReplace(Name, "y$", "ies")
+    Else
+        Name = Name & "s"
+    End If
+    
+    GetVerbosePluralName = Name
+    
+End Function
+
+Public Function GetVerboseName(ByRef Name)
+    
+    Dim matches As New clsArray: Set matches = GetMatchedPatterns(Name, "[a-z0-9][A-Z0-9]")
+    
+    If matches.count > 0 Then
+        Dim item
+        Dim i As Integer: i = 0
+        For Each item In matches.arr
+            Dim replacement: replacement = Left(item, 1) & " " & Right(item, 1)
+            Name = ReplaceMatchedPattern(Name, item, replacement)
+            i = i + 1
+        Next item
+    End If
+    
+    GetVerboseName = Name
     
 End Function
 

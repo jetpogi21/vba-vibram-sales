@@ -13,6 +13,29 @@ Public Function FixModelCreate(frm As Object, FormTypeID)
 
 End Function
 
+Public Sub Alter_RecordImportIDtoText()
+    
+    On Error GoTo ErrHandler:
+
+    Dim sqlStr: sqlStr = "SELECT * FROM tblModels WHERE NOT IsSystemTable"
+    Dim rs As Recordset: Set rs = ReturnRecordset(sqlStr)
+    
+    Do Until rs.EOF
+        
+        Dim Model: Model = rs.fields("Model"): If ExitIfTrue(isFalse(Model), """Model"" is empty..") Then Exit Sub
+        Dim TableName: TableName = GetTableName(Model)
+        
+        RunSQL "ALTER TABLE [" & TableName & "] ALTER COLUMN [RecordImportID] TEXT"
+        
+        rs.MoveNext
+    Loop
+    
+    Exit Sub
+ErrHandler:
+    ShowError Err.Number & " - " & Err.description
+
+End Sub
+
 Public Sub FixModel()
     ''in hero skills convert SkillType a and p to Active and Passive respectively
     Dim valueArr As New clsArray: valueArr.arr = "a,p"

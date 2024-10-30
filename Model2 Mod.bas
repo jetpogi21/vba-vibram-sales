@@ -99,10 +99,7 @@ Public Function frmModelsModelAfterUpdate(frm As Form, Optional TableName = "")
     End If
     
     frm("VerbosePluralCaption") = VerbosePluralCaption
-    
-    If Not isFalse(QueryName) Then
-        TableName = QueryName
-    End If
+    frm("VerbosePlural") = RegExReplace(VerbosePluralCaption, "\s+", "")
     
     Dim MainField: MainField = frm("MainField")
     If isFalse(MainField) Then
