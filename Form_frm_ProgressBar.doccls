@@ -1,0 +1,38 @@
+﻿Option Compare Database
+Option Explicit
+
+Private Sub cmd_FrmClose_Click()
+    DoCmd.Close acForm, Me.Name, acSaveNo
+End Sub
+
+'3.625  => 5220
+'1.4167 => 2040
+
+Private Sub Form_Open(Cancel As Integer)
+'    bOverlay = False
+    
+'    sHeight_Orig = Me.Height
+'    sWidth_Orig = Me.Width
+    sHeight_Orig = Me.InsideHeight
+    sWidth_Orig = Me.InsideWidth
+    
+    Me.Section(acFooter).Visible = False
+    Me.lbl_ProgressValue.Caption = VBA.FormatPercent(0, 2)
+    
+'    Me.txt_Progress.Width = 0
+'    Me.txt_Progress.Value = Null
+'    Me.txt_Progress.Left = Me.txt_TotalProgress.Left + lProgressBarOffset
+'    Me.txt_Progress.BackColor = RGB(39, 105, 219)
+    Me.lbl_Progress.Width = 0
+    Me.lbl_Progress.Caption = ""
+    Me.lbl_Progress.Left = Me.TotalProgress.Left + lProgressBarOffset
+    Me.lbl_Progress.BackColor = RGB(39, 105, 219)
+    
+'    Me.txt_TotalProgress.Value = Null
+    
+    Me.lbl_Message1.Caption = ""
+'    Me.ProgressBar_Message1_Align fmTextAlignLeft
+    
+    Me.lbl_Message2.Caption = ""
+'    Me.ProgressBar_Message2_Align fmTextAlignLeft
+End Sub

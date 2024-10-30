@@ -1,0 +1,68 @@
+﻿Option Compare Database
+Option Explicit
+Private Saved As Boolean
+Private RecordID As Variant
+
+Private Sub cmdCancel_Click()
+    
+    If Prompt_Close(Saved) Then
+        Saved = True
+        DoCmd.Close acForm, Me.Name
+    End If
+    
+End Sub
+
+Private Sub cmdSaveClose_Click()
+    
+    If are_data_valid([Form]) Then
+        
+        If IsNull(RecordID) Then
+            
+            Insert_Data [Form]
+            
+        Else
+        
+            Update_Data [Form], RecordID
+        
+        End If
+        
+        Saved = True
+        DoCmd.Close acForm, [Form].Name, acSaveNo
+        
+    End If
+    
+End Sub
+
+
+Private Sub Form_Close()
+    On Error Resume Next
+    Forms!frmAccOuts2!subform.Form.Requery
+End Sub
+
+Private Sub Form_Current()
+    Me.AccOutComment.SetFocus
+End Sub
+
+Private Sub Form_Open(Cancel As Integer)
+    ''Set the Private Variables
+    Saved = False
+    RecordID = Me.openArgs
+    
+    ''Set Form Caption
+    Dim formProperties As Recordset
+    Set formProperties = CurrentDb.OpenRecordset("SELECT * FROM tblMainForms WHERE MainFormName = '" & Me.Name & "'")
+    Me.Caption = formProperties.fields("Caption")
+    
+    If Not IsNull(RecordID) Then
+        AllocateDataToFields [Form], RecordID
+    End If
+    
+End Sub
+
+Private Sub Form_Unload(Cancel As Integer)
+
+    If Not Prompt_Close(Saved) Then
+        Cancel = True
+    End If
+   
+End Sub

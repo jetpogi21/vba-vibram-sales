@@ -1,0 +1,9 @@
+﻿Option Compare Database
+Option Explicit
+
+Private Sub Form_Error(DataErr As Integer, response As Integer)
+    If Err.Number = 2169 Then
+        '* You can't save this record at this time
+        response = acDataErrContinue
+    End If
+End Sub

@@ -1,0 +1,8 @@
+﻿Option Compare Database
+Option Explicit
+
+Private Sub fltrWildSearch_KeyDown(KeyCode As Integer, Shift As Integer)
+    If KeyCode = vbKeyReturn Then
+       FilterSubform Me.Form, 59
+    End If
+End Sub

@@ -1,0 +1,7 @@
+﻿Option Compare Database
+Option Explicit
+
+Private Sub Form_Close()
+    On Error Resume Next
+    Forms!Dashboard.Form.Requery
+End Sub

@@ -1,0 +1,399 @@
+﻿' Ben Sacherich - Developed in 2008.  Feel free to share.
+' I have added this form to an Add-in I developed so it is usable in any database.
+'https://access.wordpress.com/2014/04/01/how-many-database-connections-are-still-available-in-an-access-database/
+Option Explicit
+
+Private mlngGapBelowSubform As Long ' This is the amount of Twips between the bottom of the subform and
+                                    ' the section break.  This is used for subform/list resizing
+
+Private mlngInitalCount As Long
+Private mlngLastCount   As Long
+
+Dim strProc As String
+Dim strText As String
+
+Private Function FormattedMsgBox(Prompt As String, Optional buttons As VbMsgBoxStyle = vbOKOnly, _
+ Optional Title As String = vbNullString, Optional HelpFile As Variant, Optional Context As Variant) As VbMsgBoxResult
+
+On Error GoTo Err_Handler
+ 
+ 'Taken from http://www.trigeminal.com/usenet/usenet015.asp
+ 
+    If IsMissing(HelpFile) Or IsMissing(Context) Then
+        FormattedMsgBox = Eval("MsgBox(""" & Prompt & _
+         """, " & buttons & ", """ & Title & """)")
+    Else
+        FormattedMsgBox = Eval("MsgBox(""" & Prompt & _
+         """, " & buttons & ", """ & Title & """, """ & _
+         HelpFile & """, " & Context & ")")
+    End If
+    
+    'Examples:
+    'section before @@ is in BOLD followed by blank line
+    'strPrompt = "Import completed@@" & strPrompt
+    'FormattedMsgBox strPrompt, vbInformation + vbOKOnly, "Contact import completed"
+    'FormattedMsgBox "Bold text here!@First line normal text.@Second line normal text.",vbOKOnly + vbExclamation, "Box Title"
+    
+Exit_Handler:
+    Exit Function
+
+Err_Handler:
+    strProc = "FormattedMsgBox"
+    MsgBox "Error " & Err.Number & " in " & strProc & " procedure : " & vbCrLf & "   - " & Err.description
+    
+    Resume Exit_Handler
+    
+End Function
+
+Private Sub cboTimer_AfterUpdate()
+
+On Error GoTo Err_Handler
+
+    If Me.cboTimer.Column(0) <> "Off" Then
+        cmdClear_Click
+        Me.OnTimer = "[Event Procedure]"
+        Me.TimerInterval = CLng(Me.cboTimer.Column(1))
+        Else
+        Me.OnTimer = ""
+        Me.TimerInterval = 0
+    End If
+    
+Exit_Handler:
+    Exit Sub
+    
+Err_Handler:
+    strProc = "cboTimer_AfterUpdate"
+    MsgBox "Error " & Err.Number & " in " & strProc & " procedure :             " & vbCrLf & _
+        Err.description, vbCritical, "Program error"
+    Resume Exit_Handler
+
+
+End Sub
+
+Private Sub cmdClose_Click()
+
+On Error GoTo Err_Handler
+
+    DoCmd.Close
+    
+Exit_Handler:
+    Exit Sub
+    
+Err_Handler:
+    strProc = "cmdClose_Click"
+    MsgBox "Error " & Err.Number & " in " & strProc & " procedure :             " & vbCrLf & _
+        Err.description, vbCritical, "Program error"
+    Resume Exit_Handler
+
+End Sub
+
+Private Sub cmdHelp_Click()
+
+On Error GoTo Err_Handler
+              
+ '   MsgBox "Use this dialog to monitor the Number of open databases/tables that can be created before these errors appear: " & vbCrLf & _
+         "'Cannot open any more tables' or 'Cannot open any more databases'.           " & vbCrLf & vbCrLf & _
+         "This information can help the software developer reduce the Number of connections used by database objects." & vbCrLf & vbCrLf & _
+         "Note that every reference to a local table or query object uses 1 connection.       " & vbCrLf & _
+         "A reference to a linked table uses 2 connections.  " & vbCrLf & vbCrLf & _
+         "Review the queries you are calling from form, combo box, and listview objects and remove extraneous references to tables and sub-queries to reduce overhead.        " & _
+         vbCrLf & vbCrLf & vbCrLf & _
+         "Ben Sacherich - 2008 / Updated Colin Riddington 2018", vbExclamation, "Available Connections Info"
+         
+        
+        FormattedMsgBox "Use this dialog to monitor the Number of open databases/tables that can be created     " & vbCrLf & _
+            "before these errors appear:  " & vbCrLf & _
+            "      'Cannot open any more tables' or 'Cannot open any more databases'.           " & _
+         "@This info can help developers reduce the Number of connections used by database objects.        " & vbCrLf & vbCrLf & _
+         "NOTE: " & vbCrLf & _
+         "Each reference to a local table, linked SQL table or query object uses 4 connections.       " & vbCrLf & _
+         "A reference to a linked Access table, spreadsheet or text file uses 6 connections.  " & vbCrLf & vbCrLf & _
+         "Review the queries you are calling from form, combo box, and listview objects." & vbCrLf & _
+         "Remove extraneous references to tables and sub-queries to reduce overhead.        " & _
+         vbCrLf & vbCrLf & vbCrLf & _
+         "====================================" & vbCrLf & _
+         "Ben Sacherich 2008 / Updated Colin Riddington 2018@", vbExclamation, "Available Connections Info"
+         
+Exit_Handler:
+    Exit Sub
+    
+Err_Handler:
+    strProc = "cmdHelp_Click"
+    MsgBox "Error " & Err.Number & " in " & strProc & " procedure :             " & vbCrLf & _
+        Err.description, vbCritical, "Program error"
+    Resume Exit_Handler
+    
+End Sub
+
+Private Sub cmdPrint_Click()
+
+On Error GoTo Err_Handler
+    
+  ' Debug.Print Me.txtRemark
+   strText = Me.txtRemark
+    
+    If Application.CurrentProject.AllReports("rptAvailableConnections").IsLoaded = True Then
+        DoCmd.Close acReport, "rptAvailableConnections"
+        DoEvents
+    End If
+    
+   DoCmd.OpenReport "rptAvailableConnections", acViewPreview, , , , strText
+    
+Exit_Handler:
+    Exit Sub
+    
+Err_Handler:
+    strProc = "cmdPrint_Click"
+    MsgBox "Error " & Err.Number & " in " & strProc & " procedure :             " & vbCrLf & _
+        Err.description, vbCritical, "Program error"
+    Resume Exit_Handler
+
+End Sub
+
+Private Sub Form_Load()
+
+On Error GoTo Err_Handler
+    
+   ' ReSizeForm Me
+    ' Hold the initial gap value before resizing starts.  This code must be in Form_Load and not Form_Open!
+    mlngGapBelowSubform = Form.Section(acDetail).Height - (txtRemark.Height + txtRemark.Top)
+    
+Exit_Handler:
+    Exit Sub
+    
+Err_Handler:
+    strProc = "Form_Load"
+    MsgBox "Error " & Err.Number & " in " & strProc & " procedure :             " & vbCrLf & _
+        Err.description, vbCritical, "Program error"
+    Resume Exit_Handler
+
+End Sub
+
+Private Sub Form_Open(Cancel As Integer)
+
+On Error GoTo Err_Handler
+       
+    Call sUpdateRemark
+    
+Exit_Handler:
+    Exit Sub
+    
+Err_Handler:
+    strProc = "Form_Open"
+    MsgBox "Error " & Err.Number & " in " & strProc & " procedure :             " & vbCrLf & _
+        Err.description, vbCritical, "Program error"
+    Resume Exit_Handler
+    
+End Sub
+
+Private Sub cmdClear_Click()
+
+On Error GoTo Err_Handler
+
+    txtRemark = ""
+    Call sUpdateRemark  ' Remove this line if you want the textbox to remain empty after clicking the Clear button.
+    
+Exit_Handler:
+    Exit Sub
+    
+Err_Handler:
+    strProc = "cmdClear_Click"
+   MsgBox "Error " & Err.Number & " in " & strProc & " procedure :             " & vbCrLf & _
+        Err.description, vbCritical, "Program error"
+    Resume Exit_Handler
+    
+End Sub
+
+Private Sub cmdRefresh_Click()
+
+On Error GoTo Err_Handler
+
+    Call sUpdateRemark
+    
+Exit_Handler:
+    Exit Sub
+    
+Err_Handler:
+    strProc = "cmdRefresh_Click"
+    MsgBox "Error " & Err.Number & " in " & strProc & " procedure :             " & vbCrLf & _
+        Err.description, vbCritical, "Program error"
+    Resume Exit_Handler
+    
+End Sub
+
+Private Sub sUpdateRemark()
+
+On Error GoTo Err_Handler
+
+    Dim lngCurrentCount As Long
+    Dim strOpenObjects  As String
+    Dim obj             As Object
+    
+    Dim tdf As DAO.TableDef
+    Dim qdf As DAO.QueryDef
+
+    DoCmd.Hourglass True
+    
+    ' Do you want to include a list of open objects in the log?
+    If chkLogOpenObjects <> 0 Then
+    
+        For Each obj In Forms
+            strOpenObjects = strOpenObjects & Space(6) & "Form" & Space(8) & obj.Name & vbCrLf
+        Next
+        
+        For Each obj In Reports
+            strOpenObjects = strOpenObjects & Space(6) & "Report" & Space(5) & obj.Name & vbCrLf
+        Next
+                
+        'CR - not sure this works!
+        For Each obj In Application.Modules
+            strOpenObjects = strOpenObjects & Space(6) & "Module" & Space(5) & obj.Name & vbCrLf
+        Next
+        
+         'CR 08/09/2018 - detects tables opened directly
+        For Each tdf In CurrentDb.TableDefs
+            If IsObjectOpen(tdf.Name, acTable) Then
+                strOpenObjects = strOpenObjects & Space(6) & "Table" & Space(7) & tdf.Name & vbCrLf
+            End If
+        Next
+        
+        'CR 08/09/2018 - detects queries opened directly
+        For Each qdf In CurrentDb.QueryDefs
+            If IsObjectOpen(qdf.Name, acQuery) Then
+                strOpenObjects = strOpenObjects & Space(6) & "Query" & Space(6) & qdf.Name & vbCrLf
+            End If
+        Next
+        
+    End If
+    
+    
+    If Len(Nz(txtRemark, "")) = 0 Then
+        ' Screen is clear.  Assume user wants count to start over.
+        mlngInitalCount = fOpenDatabaseCount
+        mlngLastCount = mlngInitalCount
+        txtRemark = mlngInitalCount & " initially available at " & Now() & vbCrLf & strOpenObjects
+        
+        txtRemark.SetFocus
+        txtRemark.SelStart = Len(txtRemark) - 1
+    Else
+
+        lngCurrentCount = fOpenDatabaseCount
+        txtRemark = txtRemark & vbCrLf & lngCurrentCount & " available.  " _
+            & lngCurrentCount - mlngLastCount & " change.  " & lngCurrentCount - mlngInitalCount & " from baseline at " & Now() & vbCrLf & strOpenObjects
+        txtRemark.SetFocus
+        txtRemark.SelStart = Len(txtRemark)
+        mlngLastCount = fOpenDatabaseCount
+    
+    End If
+        
+    DoCmd.Hourglass False
+    
+Exit_Handler:
+    Exit Sub
+    
+Err_Handler:
+    strProc = "sUpdateRemark"
+    MsgBox "Error " & Err.Number & " in " & strProc & " procedure :             " & vbCrLf & _
+        Err.description, vbCritical, "Program error"
+    Resume Exit_Handler
+
+End Sub
+
+Public Function fOpenDatabaseCount(Optional plngLevel As Long = 1) As Long
+' - Recursive -
+'       Count the Number of open databases/tables that can be created
+'       before the error 'Cannot open any more tables.' or
+'       'Cannot open any more databases' will show up.
+' - Recursive -
+'
+' This function can be used to determine which database objects are keeping the most TableID's open.
+' Ben Sacherich - 7/17/2008
+
+    Dim strSQL  As String
+'    Dim rs      As Recordset
+    Dim db      As DAO.Database
+
+    On Error GoTo Err_Handler
+    
+    ' Protection in case the recursion runs wild.
+    If plngLevel > 2050 Then
+        fOpenDatabaseCount = -9999
+        Exit Function
+    End If
+    
+'    ' Make a simple query to a local table
+'    strSQL = "Select Count(*) From [Switchboard Items] "
+'    Set rs = DBEngine(0)(0).OpenRecordset(strSQL, dbOpenDynaset, dbReadOnly)
+        
+    ' Create an instance of a database object.
+    Set db = CurrentDb()
+        
+    ' Recurse this function
+    plngLevel = fOpenDatabaseCount(plngLevel + 1)
+    
+    '--- Code following this line will not execute until the Open Database limit has been met.
+
+Exit_Handler:
+    ' Free up the memory though in my testing not having this line did not make a difference in TableID's.
+    Set db = Nothing
+    
+    ' Return the maximum count all the way back to the initial recursive call.
+    fOpenDatabaseCount = plngLevel
+
+    Exit Function
+
+Err_Handler:
+    strProc = "fOpenDatabaseCount"
+    
+    If Err.Number = 3048 Then
+        ' Cannot open any more databases.
+    ElseIf Err.Number = 3014 Then
+        ' Cannot open any more tables.
+        ' This error will not occur unless variable "rs" is being used.
+    Else
+        MsgBox "Error " & Err.Number & " in " & strProc & " procedure :             " & vbCrLf & _
+            Err.description, vbCritical, "Program error"
+    End If
+    
+    Resume Exit_Handler
+End Function
+
+Private Sub Form_Resize()
+    ' Window sizing customization for hi-res monitors.  BS 2/24/2006.
+    ' Resize the subform to fit the screen.
+    ' Note that it was a real pain trying to figure out the right properties to use to recalc the subform size.
+    ' I couldn't find any examples of this on the Internet.
+    ' Don't forget to copy the code from Form_Load() and the module level variable.
+    
+    On Error Resume Next
+ 
+    If Form.WindowHeight > 1300 Then
+        txtRemark.Height = _
+            (Form.WindowHeight - (Form.WindowHeight - Form.InsideHeight) _
+            - (Form.Section(acHeader).Height + Form.Section(acFooter).Height)) _
+            - (txtRemark.Top + mlngGapBelowSubform)
+    End If
+End Sub
+
+Private Sub Form_Timer()
+ cmdRefresh_Click
+End Sub
+Function IsObjectOpen(strName As String, Optional intObjectType As Integer = acForm) As Boolean
+
+' intObjectType can be:
+' acTable (value 0)
+' acQuery (value 1)
+' acForm (value 2) Default
+' acReport (value 3)
+' acMacro (value 4)
+' acModule (value 5)
+
+'Returns True if strName is open, False otherwise.
+
+On Error Resume Next
+    IsObjectOpen = (SysCmd(acSysCmdGetObjectState, intObjectType, strName) <> 0)
+     
+    If Err <> 0 Then
+        IsObjectOpen = False
+    End If
+End Function

@@ -1,0 +1,45 @@
+﻿Option Compare Database
+Option Explicit
+
+Private Sub cmdPrintReport_Click()
+        
+    Dim myFile As String
+    myFile = "C:\Users\" & Environ$("username") & "\Desktop\blank.txt"
+    Open "LPT3: " For Output As #1
+    
+    Dim fso As Object, t As Object, filePath
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    
+    Dim strFilePath As String
+    Dim strBuffer As String
+    
+    strFilePath = "C:\Users\" & Environ$("username") & "\Desktop\blank.txt"
+    
+    Dim FontCode
+    Select Case txtFont
+        Case "Pica"
+            FontCode = 0
+        Case "Elite"
+            FontCode = 1
+        Case "Condensed"
+            FontCode = 4
+        Case "Emphasized"
+            FontCode = 8
+    End Select
+    
+    If fso.fileExists(strFilePath) Then
+        Set t = fso.OpenTextFile(strFilePath, 1, False)
+        strBuffer = t.ReadAll
+        Print #1, Chr(27) & Chr(33) & Chr(FontCode) & strBuffer
+        t.Close
+    End If
+    
+    Set t = Nothing
+
+    Print #1, Chr(12)
+    
+    Close #1
+    
+    MsgBox ("Data Processed")
+    
+End Sub

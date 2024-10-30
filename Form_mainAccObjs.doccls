@@ -1,0 +1,33 @@
+﻿Option Compare Database
+Option Explicit
+
+Private Sub cboGroups_AfterUpdate()
+    
+    Dim frm As Form
+    Set frm = Me.subform.Form
+
+    If IsNull(cboGroups) Then
+        frm.FilterOn = False
+        Exit Sub
+    End If
+    
+    Dim RecordID() As String, i As Integer, rs As Recordset
+    
+    Set rs = ReturnRecordset("SELECT * FROM tblAccObjConnections WHERE AccObjGroupID = " & cboGroups)
+    
+    Do Until rs.EOF
+        ReDim Preserve RecordID(i)
+        RecordID(i) = rs.fields("AccObjID")
+        i = i + 1
+        rs.MoveNext
+    Loop
+    
+    If i = 0 Then
+        frm.FilterOn = False
+        Exit Sub
+    End If
+    
+    frm.filter = "AccObjID In(" & Join(RecordID, ",") & ")"
+    frm.FilterOn = True
+    
+End Sub

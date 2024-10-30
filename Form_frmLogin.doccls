@@ -1,0 +1,103 @@
+﻿Option Compare Database
+Option Explicit
+
+Private Sub cmdLogin_Click()
+On Error GoTo Err_cmdLogin_Click
+
+    
+    Dim UserID, computerName, fieldValues As New clsArray, sqlObj As New clsSQL
+    Dim strcompUsername As String, strcompUserPass As String
+    strcompUsername = "StrComp(UserName,'" & UserName & "',0) = 0"
+    strcompUserPass = "StrComp(UserPassword,'" & UserPassword & "',0) = 0"
+    
+    UserID = ELookup("tblUsers", strcompUsername & " And " & strcompUserPass, "UserID")
+    computerName = Environ$("computername")
+    If isFalse(UserID) Then
+    
+        'INSERT STATEMENT
+        fieldValues.Add EscapeString("Login Attempt", "tblLogs", "EventName")
+        fieldValues.Add EscapeString(computerName, "tblLogs", "ComputerName")
+        fieldValues.Add EscapeString("Failed", "tblLogs", "Result")
+        fieldValues.Add EscapeString("Username: " & UserName & " | Password: " & UserPassword, "tblLogs", "OtherDetails")
+
+        With sqlObj
+            .SQLType = "INSERT"
+            .Source = "tblLogs"
+            .fields = "EventName,ComputerName,Result,OtherDetails"
+            .insertValues = fieldValues.arr
+            .Run
+        End With
+        
+        ShowError "Invalid username/password."
+    Else
+        
+        ''g_Language = txtLanguage
+        g_userID = UserID
+        
+        fieldValues.Add EscapeString(UserID, "tblLogs", "UserID")
+        fieldValues.Add EscapeString("Login Attempt", "tblLogs", "EventName")
+        fieldValues.Add EscapeString(computerName, "tblLogs", "ComputerName")
+        fieldValues.Add EscapeString("Success", "tblLogs", "Result")
+        
+        With sqlObj
+            .SQLType = "INSERT"
+            .Source = "tblLogs"
+            .fields = "UserID,EventName,ComputerName,Result"
+            .insertValues = fieldValues.arr
+            .Run
+        End With
+        
+        open_form "frmCustomDashboard"
+        g_FrontEndVersion = GetGlobalSetting("Application_FrontEndVersion")
+        DoCmd.Close acForm, Me.Name, acSaveNo
+        
+    End If
+        
+    
+Exit_cmdLogin_Click:
+    Exit Sub
+Err_cmdLogin_Click:
+    LogError Err.Number, Err.description, "cmdLogin_Click()"
+    Resume Exit_cmdLogin_Click
+End Sub
+
+Private Sub Form_Load()
+
+    Dim UserID, computerName
+    Application.SetOption "Move after enter", 0
+    Application.SetOption "Behavior entering field", 0
+    
+    computerName = Environ("ComputerName")
+    ''This will automatically login the system if the computer involved is the
+    ''systemAutomationComputerName and systemAutomationWindowsUserName
+    If computerName = CStr(GetGlobalSetting("systemAutomationComputerName")) And Environ("UserName") = CStr(GetGlobalSetting("systemAutomationWindowsUserName")) Then
+        UserID = GetGlobalSetting("systemAutomationUserID")
+        g_userID = UserID
+        
+        'INSERT STATEMENT
+        Dim fieldValues As New clsArray, sqlObj As New clsSQL
+        fieldValues.Add EscapeString(UserID, "tblLogs", "UserID")
+        fieldValues.Add EscapeString("Login Attempt", "tblLogs", "EventName")
+        fieldValues.Add EscapeString(computerName, "tblLogs", "ComputerName")
+        fieldValues.Add EscapeString("Success", "tblLogs", "Result")
+        
+        With sqlObj
+            .SQLType = "INSERT"
+            .Source = "tblLogs"
+            .fields = "UserID,EventName,ComputerName,Result"
+            .insertValues = fieldValues.arr
+            .Run
+        End With
+        
+        open_form "frmDashboard"
+        g_FrontEndVersion = GetGlobalSetting("Application_FrontEndVersion")
+        
+        ''Close the login form
+        DoCmd.Close acForm, Me.Name, acSaveNo
+        
+    End If
+    
+End Sub
+
+
+
